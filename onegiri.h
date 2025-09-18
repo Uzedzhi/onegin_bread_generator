@@ -23,7 +23,7 @@ struct ptr_line {
     char * ptr_last_word_transcription;
     size_t len_last_word_transcription;
     size_t len_line;
-    size_t num_of_strofa;
+    bool is_nine_slogov;
 };
 
 #ifndef NDEBUG

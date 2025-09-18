@@ -15,13 +15,16 @@ inline int is_yoti(char ch) {
 }
 
 inline char changed_yoti(char ch) {
-    if (ch == 'å') // todo switch
-        return 'ý';
-    else if (ch == 'þ')
-        return 'ó';
-    else if (ch == 'ÿ')
-        return 'à';
-    return ch;
+    switch(ch) {
+        case 'å':
+            return 'ý';
+        case 'þ':
+            return 'ó';
+        case 'ÿ':
+            return 'à';
+        default:
+            return ch;
+    }
 }
 
 inline char lower(char ch) {
@@ -126,7 +129,8 @@ int init_lines(ptr_line lines[], char * onegin_buffer, size_t num_of_lines) {
         lines[i].len_line = next_line - onegin_buffer - 1; // -1 bcs next_line points to \0 + 1
         lines[i].ptr_last_word_transcription = get_last_word_transcription(lines[i].len_line + 1, onegin_buffer);
         lines[i].len_last_word_transcription = strlen(lines[i].ptr_last_word_transcription);
-        lines[i].num_of_strofa = atoi(onegin_buffer); 
+        int num_of_strofa = atoi(onegin_buffer) % 14;
+        lines[i].is_nine_slogov = num_of_strofa % 3 == 0 || num_of_strofa == 1 || num_of_strofa == 5; 
 
         onegin_buffer = next_line;
         next_line = strchr(onegin_buffer, '\0') + 1;
@@ -156,6 +160,16 @@ char * init_and_read_into_onegin_buffer(const char * file_name_src) {
     return buffer;
 }
 
+
+size_t get_file_size(FILE * fp) {
+    fseek(fp, 0, SEEK_END);
+    size_t file_size = ftell(fp);
+    rewind(fp);
+
+
+    return file_size;
+}
+
 size_t get_num_of_equal_symbols_from_back(char *str1, char *str2) {
     sassert(str1 != NULL && str2 != NULL, ERR_PTR_IS_NULL);
 
@@ -172,24 +186,16 @@ size_t get_num_of_equal_symbols_from_back(char *str1, char *str2) {
     return count;
 }
 
-int compare_normal(ptr_line * first, ptr_line * second) {
+int compare_normal(const void * first, const void * second) {
     sassert(first != NULL && second != NULL, ERR_PTR_IS_NULL);
 
-    char * str1 = first->ptr_line;
-    char * str2 = second->ptr_line;
+    
+    char * str1 = ((ptr_line *)first)->ptr_line;
+    char * str2 = ((ptr_line *)second)->ptr_line;
     size_t index_str1 = 0;
     size_t index_str2 = 0;
 
     while (str1[index_str1] != 0 && str2[index_str2] != 0) {
-        if (!is_alpha_russian(str1[index_str1])) {
-            index_str1++;
-            continue;
-        }
-        if (!is_alpha_russian(str2[index_str2])) {
-            index_str2++;
-            continue;
-        }
-
         if (str1[index_str1] != str2[index_str2])
             break;
         index_str1++;
@@ -200,13 +206,13 @@ int compare_normal(ptr_line * first, ptr_line * second) {
         
 }
 
-int compare_reverse_transcription(ptr_line * first, ptr_line * second) { // void comparator
+int compare_reverse_transcription(const void * first, const void * second) { // void comparator
     sassert(first != NULL && second != NULL, ERR_PTR_IS_NULL);
 
-    char * str1 = first->ptr_last_word_transcription;
-    char * str2 = second->ptr_last_word_transcription;
-    size_t strlen_str1 = first->len_last_word_transcription;
-    size_t strlen_str2 = second->len_last_word_transcription;
+    char * str1 = ((ptr_line *)first)->ptr_last_word_transcription;
+    char * str2 = ((ptr_line *)second)->ptr_last_word_transcription;
+    size_t strlen_str1 = ((ptr_line *)first)->len_last_word_transcription;
+    size_t strlen_str2 = ((ptr_line *)second)->len_last_word_transcription;
 
     while (strlen_str1 >= 0 && strlen_str2 >= 0) {
         if (str1[strlen_str1] != str2[strlen_str2])
@@ -219,13 +225,14 @@ int compare_reverse_transcription(ptr_line * first, ptr_line * second) { // void
         
 }
 
-int compare_reverse(ptr_line * first, ptr_line * second) { // void comparator
-    sassert(first != NULL && second != NULL, ERR_PTR_IS_NULL);
+int compare_reverse(const void * first, const void * second) { // void comparator
+    sassert(first  != NULL, ERR_PTR_IS_NULL)
+    sassert(second != NULL, ERR_PTR_IS_NULL);
 
-    size_t strlen_str1 = first->len_line - 1;
-    size_t strlen_str2 = second->len_line - 1;
-    char * str1 = first->ptr_line;
-    char * str2 = second->ptr_line;
+    size_t strlen_str1 = ((ptr_line *)first)->len_line - 1;
+    size_t strlen_str2 = ((ptr_line *)second)->len_line - 1;
+    char * str1 = ((ptr_line *)first)->ptr_line;
+    char * str2 = ((ptr_line *)second)->ptr_line;
 
     while (strlen_str1 >= 0 && strlen_str2 >= 0) {
         if (str1[strlen_str1] != str2[strlen_str2])
@@ -237,15 +244,41 @@ int compare_reverse(ptr_line * first, ptr_line * second) { // void comparator
     return str1[strlen_str1] - str2[strlen_str2];
 }
 
-void bubble_sort(ptr_line * lines, int(* func)(ptr_line *, ptr_line *), size_t num_of_lines) {
-    sassert(lines != NULL && func != NULL, ERR_PTR_IS_NULL);
+void print_part_of_sorted_array(ptr_line lines[], FILE * fp, size_t num_of_lines) {
+    sassert(lines != NULL, ERR_PTR_IS_NULL);
+    sassert(fp != NULL, ERR_PTR_IS_NULL);
+    sassert(num_of_lines != NULL, ERR_PTR_IS_NULL);
+
+    for (size_t i = 0; i < num_of_lines; i++) { // print part of sorted array
+        fprintf(fp, "(%s)\n", lines[i].ptr_line);
+    }
+}
+
+void print_unsorted_array(char * onegin_buffer, FILE * fp, size_t num_of_lines) {
+    sassert(onegin_buffer != NULL, ERR_PTR_IS_NULL);
+    sassert(fp != NULL, ERR_PTR_IS_NULL);
+    sassert(num_of_lines != NULL, ERR_PTR_IS_NULL);
+
+    for (size_t i = 0; i < 10; i++) { // print art of unsorted array
+        fprintf(fp, "(%s)\n", onegin_buffer + 5); // +5 to skip numbers at the start of each string
+        onegin_buffer = strchr(onegin_buffer, '\0') + 1;
+    }
+}
+
+int is_file_exists(const char * file_name) {
+    FILE * fp = fopen(file_name, "r");
+    fclose(fp);
+    return fp != NULL;
+}
+
+void bubble_sort(ptr_line * lines, int(* func)(const void *, const void *), size_t num_of_lines) {
+    sassert(lines != NULL, ERR_PTR_IS_NULL);
+    sassert(func != NULL, ERR_PTR_IS_NULL);
 
     for (size_t i = 0; i < num_of_lines - 1; i++) {
         for (size_t j = 0; j < num_of_lines - 1 - i; j++) {
             if (func(lines + j, lines + j + 1) > 0) {
-                ptr_line temp = lines[j];
-                lines[j] = lines[j+1];
-                lines[j+1] = temp;
+                swap(lines[j], lines[j+1]);
             }
         }
     }
@@ -295,7 +328,6 @@ void place_final_random_indexes(size_t final_random_indexes[], const int onegin_
             break;
         }
     }
-
 }
 
 void fill_strofa_with_random_indexes(ptr_line * lines, size_t *final_random_indexes, int num_of_lines) {
