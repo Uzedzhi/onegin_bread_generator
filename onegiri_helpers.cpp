@@ -119,25 +119,30 @@ size_t get_num_of_lines(char * onegin_buffer) {
     return count;
 }
 
-int init_lines(ptr_line lines[], char * onegin_buffer, size_t num_of_lines) {
+int *init_lines_and_get_start_for_each_rhythm_type(ptr_line lines[], char * onegin_buffer, size_t num_of_lines) {
     sassert(onegin_buffer != NULL, ERR_PTR_IS_NULL);
+    sassert(lines         != NULL, ERR_PTR_IS_NULL);
 
     size_t i = 0;
+    int * start_for_each_rhythm_type = (int *) calloc(NUM_OF_RHYTHM_TYPES + 1, sizeof(int));
     char * next_line = strchr(onegin_buffer, '\0') + 1;
     while (i < num_of_lines) {
-        lines[i].ptr_line = onegin_buffer + 5; // +5 to skip numbers at start of string
+        lines[i].ptr_line = onegin_buffer + RANGE_TO_SKIP_NUMBERS; // +5 to skip numbers at start of string
         lines[i].len_line = next_line - onegin_buffer - 1; // -1 bcs next_line points to \0 + 1
         lines[i].ptr_last_word_transcription = get_last_word_transcription(lines[i].len_line + 1, onegin_buffer);
         lines[i].len_last_word_transcription = strlen(lines[i].ptr_last_word_transcription);
-        int num_of_strofa = atoi(onegin_buffer) % 14;
-        lines[i].is_nine_slogov = num_of_strofa % 3 == 0 || num_of_strofa == 1 || num_of_strofa == 5; 
+        lines[i].rhythm_type = onegin_rhythm_types[(atoi(onegin_buffer) - 1) % 14];
 
+        start_for_each_rhythm_type[lines[i].rhythm_type] += 1;
         onegin_buffer = next_line;
         next_line = strchr(onegin_buffer, '\0') + 1;
         ++i;
     }
 
-    return 0;
+    for (size_t i = 1; i < NUM_OF_RHYTHM_TYPES + 1; i++) {
+         start_for_each_rhythm_type[i] += start_for_each_rhythm_type[i - 1];
+    }
+    return start_for_each_rhythm_type;
 }
 
 char * init_and_read_into_onegin_buffer(const char * file_name_src) {
@@ -165,7 +170,6 @@ size_t get_file_size(FILE * fp) {
     fseek(fp, 0, SEEK_END);
     size_t file_size = ftell(fp);
     rewind(fp);
-
 
     return file_size;
 }
@@ -244,13 +248,27 @@ int compare_reverse(const void * first, const void * second) { // void comparato
     return str1[strlen_str1] - str2[strlen_str2];
 }
 
-void print_part_of_sorted_array(ptr_line lines[], FILE * fp, size_t num_of_lines) {
+int compare_by_rhythm_type(const void * first, const void * second) { // void comparator
+    sassert(first  != NULL, ERR_PTR_IS_NULL)
+    sassert(second != NULL, ERR_PTR_IS_NULL);
+
+    return ((ptr_line *)first)->rhythm_type - ((ptr_line *)second)->rhythm_type;
+}
+
+void print_sorted_array(ptr_line lines[], FILE * fp, size_t num_of_lines) {
     sassert(lines != NULL, ERR_PTR_IS_NULL);
     sassert(fp != NULL, ERR_PTR_IS_NULL);
     sassert(num_of_lines != NULL, ERR_PTR_IS_NULL);
 
     for (size_t i = 0; i < num_of_lines; i++) { // print part of sorted array
-        fprintf(fp, "(%s)\n", lines[i].ptr_line);
+        fprintf(fp, "(%-20s), (%s), (%d)\n", lines[i].ptr_last_word_transcription, lines[i].ptr_line, lines[i].rhythm_type);
+    }
+}
+
+void print_my_strofa(ptr_line lines[], size_t random_strofa_indexes[], FILE *fp) {
+    fprintf(fp, "\n");
+    for (size_t i = 0; i < LINES_IN_STROFA; i++) {
+        fprintf(fp, "%s, %s, %d\n", lines[random_strofa_indexes[i]].ptr_last_word_transcription, lines[random_strofa_indexes[i]].ptr_line, lines[random_strofa_indexes[i]].rhythm_type);
     }
 }
 
@@ -259,13 +277,15 @@ void print_unsorted_array(char * onegin_buffer, FILE * fp, size_t num_of_lines) 
     sassert(fp != NULL, ERR_PTR_IS_NULL);
     sassert(num_of_lines != NULL, ERR_PTR_IS_NULL);
 
-    for (size_t i = 0; i < 10; i++) { // print art of unsorted array
-        fprintf(fp, "(%s)\n", onegin_buffer + 5); // +5 to skip numbers at the start of each string
+    for (size_t i = 0; i < num_of_lines; i++) { // print art of unsorted array
+        fprintf(fp, "(%s)\n", onegin_buffer + RANGE_TO_SKIP_NUMBERS); // +5 to skip numbers at the start of each string
         onegin_buffer = strchr(onegin_buffer, '\0') + 1;
     }
 }
 
 int is_file_exists(const char * file_name) {
+    sassert(file_name != NULL, ERR_PTR_IS_NULL);
+
     FILE * fp = fopen(file_name, "r");
     fclose(fp);
     return fp != NULL;
@@ -284,12 +304,14 @@ void bubble_sort(ptr_line * lines, int(* func)(const void *, const void *), size
     }
 }
 
-void fill_with_different_rand_numbers(int rand_numbers[], int num_of_lines) {
+void fill_with_different_rand_numbers(int rand_numbers[], int num_of_lines, int * start_for_each_rhythm_type) {
     sassert(rand_numbers != NULL, ERR_PTR_IS_NULL);
+    sassert(start_for_each_rhythm_type != NULL, ERR_PTR_IS_NULL);
 
-    for (int i = 0; i < LINES_IN_STROFA / 2; i++) { // how many different line rhymes in strofa
+    for (int i = 0; i < NUM_OF_RHYTHM_TYPES; i++) { // how many different line rhymes in strofa
         while (true) {
-            rand_numbers[i] = rand() % num_of_lines;
+            // printf("\n%d, %d, %d", start_for_each_rhythm_type[i + 1], start_for_each_rhythm_type[i], i);
+            rand_numbers[i] = start_for_each_rhythm_type[i] + rand() % (start_for_each_rhythm_type[i + 1] - start_for_each_rhythm_type[i]);
             int j = 0;
             while (j++ < i)
                 if (abs(rand_numbers[j] - rand_numbers[i]) < MINIMUM_RHYME_DISTANCE)
@@ -330,14 +352,14 @@ void place_final_random_indexes(size_t final_random_indexes[], const int onegin_
     }
 }
 
-void fill_strofa_with_random_indexes(ptr_line * lines, size_t *final_random_indexes, int num_of_lines) {
+void fill_strofa_with_random_indexes(ptr_line * lines, size_t *final_random_indexes, int *start_for_each_rhythm_type, int num_of_lines) {
     sassert(lines != NULL && final_random_indexes != NULL, ERR_PTR_IS_NULL);
 
-    const int onegin_strofa_structure[14] = {0, 1, 0, 1, 2, 2, 3, 3, 4, 5, 5, 4, 6, 6};
     int rand_numbers[LINES_IN_STROFA / 2] = {};
-
-    fill_with_different_rand_numbers(rand_numbers, num_of_lines);
-
+    fill_with_different_rand_numbers(rand_numbers, num_of_lines, start_for_each_rhythm_type);
+    // for (int i = 0; i < 7; i++) {
+    //     printf("%d ", rand_numbers[i]);
+    // }
     for (size_t num_of_rhyme = 0; num_of_rhyme < LINES_IN_STROFA / 2; num_of_rhyme++) {
         size_t range = rand() % 3 + 1; // range from 1 to 3
         char * str_now   = lines[rand_numbers[num_of_rhyme]].ptr_last_word_transcription;
@@ -346,16 +368,26 @@ void fill_strofa_with_random_indexes(ptr_line * lines, size_t *final_random_inde
         char * str_close = lines[close_rhyme_index].ptr_last_word_transcription;
 
         size_t how_many_equal_from_behind = get_num_of_equal_symbols_from_back(str_now, str_close);
+
         // if bad rhyme => smaller range
         if (how_many_equal_from_behind <= MINIMUM_NUM_FOR_GOOD_RHYME) {
-            range  = 1; // small range if rhyme is not so good
-            close_rhyme_index = get_close_index(1);
+            range = 1; // small range if rhyme is not so good
+            close_rhyme_index = get_close_index(-1);
 
-        } // too good rhyme => bigger range
-        else if (how_many_equal_from_behind >= MAXIMUM_NUM_FOR_GOOD_RHYME) {
-            range += 3; // bigger range if words are practically same
+        }
+        // if too good rhythm => bigger range
+        if (how_many_equal_from_behind >= MAXIMUM_NUM_FOR_GOOD_RHYME) {
+            range += 5; // bigger range if words are practically same
             close_rhyme_index = get_close_index(range); 
         }
+        how_many_equal_from_behind = get_num_of_equal_symbols_from_back(lines[close_rhyme_index].ptr_last_word_transcription, str_now);
+
+        while (how_many_equal_from_behind - 1 == strlen(lines[close_rhyme_index].ptr_last_word_transcription)) {
+            range += 1;
+            close_rhyme_index = get_close_index(range); 
+            how_many_equal_from_behind = get_num_of_equal_symbols_from_back(lines[close_rhyme_index].ptr_last_word_transcription, str_now);
+        }
+
         place_final_random_indexes(final_random_indexes, onegin_strofa_structure, num_of_rhyme, rand_numbers[num_of_rhyme], close_rhyme_index);
     }
 }
